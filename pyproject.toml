@@ -30,3 +30,7 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[build-system]
+requires = ["uv_build>=0.4.0,<0.10.0"]
+build-backend = "uv_build"
