@@ -29,11 +29,7 @@ def render_dashboard(df: pd.DataFrame, category_col: str = "category") -> None:
     categories = ["Todas"]
     if category_col in df.columns:
         unique_cats = sorted(
-            {
-                str(val).strip()
-                for val in df[category_col].dropna().unique()
-                if str(val).strip()
-            }
+            {str(val).strip() for val in df[category_col].dropna().unique() if str(val).strip()}
         )
         categories.extend(unique_cats)
 

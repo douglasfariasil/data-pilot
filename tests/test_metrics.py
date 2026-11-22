@@ -10,9 +10,7 @@ def _sample_clean_df() -> pd.DataFrame:
             "customer_id": ["C1", "C2", "C1", "C3"],
             "category": ["Eletronicos", "Eletronicos", "Livros", "Eletronicos"],
             "status": ["concluido", "cancelado", "concluido", "concluido"],
-            "order_date": pd.to_datetime(
-                ["2026-01-10", "2026-01-15", "2026-02-05", "2026-02-20"]
-            ),
+            "order_date": pd.to_datetime(["2026-01-10", "2026-01-15", "2026-02-05", "2026-02-20"]),
             "revenue": [200.0, 150.0, 100.0, 300.0],
         }
     )

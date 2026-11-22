@@ -1,5 +1,7 @@
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
+
 import pandas as pd
 
 from data_pilot import metrics
@@ -53,7 +55,8 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "function": {
                 "name": "get_average_ticket",
                 "description": (
-                    "Retorna o ticket médio (receita total dividida pelo número de pedidos concluídos)."
+                    "Retorna o ticket médio ( "
+                    "receita total dividida pelo número de pedidos concluídos)."
                 ),
                 "parameters": {
                     "type": "object",
@@ -98,7 +101,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                     "properties": {
                         "category": {
                             "type": "string",
-                            "description": "Categoria opcional para filtrar (ex.: 'eletronicos').",
+                            "description": "Categoria opcional para filtrar ( ex.: 'eletronicos').",
                         }
                     },
                     "required": [],

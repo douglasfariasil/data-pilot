@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 COMPLETED_STATUSES = {"concluido", "concluído", "completed", "entregue", "paid", "pago"}
 CANCELLED_STATUSES = {"cancelado", "cancelled", "canceled", "cancelada"}
 

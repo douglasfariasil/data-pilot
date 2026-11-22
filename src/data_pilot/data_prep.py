@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import pandas as pd
 
 
@@ -23,9 +24,7 @@ def normalize_status(series: pd.Series) -> pd.Series:
     return series.astype("string").str.strip().str.lower()
 
 
-def compute_revenue(
-    df: pd.DataFrame, quantity_col: str, unit_price_col: str
-) -> pd.Series:
+def compute_revenue(df: pd.DataFrame, quantity_col: str, unit_price_col: str) -> pd.Series:
     """Calcula a receita a partir de colunas numéricas convertidas com segurança."""
     qty = pd.to_numeric(df[quantity_col], errors="coerce")
     price = pd.to_numeric(df[unit_price_col], errors="coerce")
