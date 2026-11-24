@@ -35,3 +35,97 @@ def test_tool_definitions_and_execution() -> None:
         registry=registry,
     )
     assert output_customer == {"category": "Livros", "average_revenue_per_customer": 100.0}
+
+
+def test_execute_tool_rejects_invalid_json() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    output = execute_tool_call(
+        "probe",
+        "{invalid",
+        registry,
+    )
+
+    assert output == {"error": "Argumentos inválidos enviados pelo modelo."}
+
+
+def test_execute_tool_rejects_non_object_arguments() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    output = execute_tool_call(
+        "probe",
+        '["Livros"]',
+        registry,
+    )
+
+    assert output == {
+        "error": "Os argumentos devem ser enviados como um objeto JSON."
+    }
+
+
+def test_execute_tool_rejects_unexpected_arguments() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    output = execute_tool_call(
+        "probe",
+        '{"category": "Livros", "limit": 10}',
+        registry,
+    )
+
+    assert output == {
+        "error": "A ferramenta recebeu argumentos não permitidos."
+    }
+
+
+def test_execute_tool_rejects_invalid_category_type() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    output = execute_tool_call(
+        "probe",
+        '{"category": 123}',
+        registry,
+    )
+
+    assert output == {
+        "error": "O argumento category deve ser um texto ou null."
+    }
+
+
+def test_execute_tool_normalizes_category() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    output = execute_tool_call(
+        "probe",
+        '{"category": "  Livros  "}',
+        registry,
+    )
+
+    assert output == {"category": "Livros"}
+
+
+def test_execute_tool_rejects_unknown_tool() -> None:
+    output = execute_tool_call(
+        "tool_inexistente",
+        "{}",
+        {},
+    )
+
+    assert output == {
+        "error": "A ferramenta solicitada não está disponível."
+    }
+
+
+def test_execute_tool_does_not_expose_internal_exception() -> None:
+    def failing_tool() -> None:
+        raise RuntimeError("detalhe interno confidencial")
+
+    output = execute_tool_call(
+        "failing_tool",
+        None,
+        {"failing_tool": failing_tool},
+    )
+
+    assert output == {
+        "error": "Não foi possível executar a ferramenta solicitada."
+    }
+    assert "detalhe interno confidencial" not in str(output)

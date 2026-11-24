@@ -82,7 +82,7 @@ data-pilot/
 ## Como Instalar, Configurar e Rodar
 
 1. Pré-requisitos
-Python 3.11+
+Python 3.13+
 
 uv instalado
 
@@ -106,7 +106,7 @@ Edite o .env:
 
 OPENROUTER_API_KEY=sk-or-v1-sua-chave-aqui
 
-OPENROUTER_BASE_URL=[https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)
+OPENROUTER_BASE_URL= [https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)
 
 OPENROUTER_MODEL=openrouter/free
 
@@ -130,14 +130,51 @@ Conversa com os Dados
 
 ### 2. Checklist Final Antes de Enviar o Link[cite: 1]
 
-- **Base real preenchida**: Assim que colocar os dados reais no `data/raw/sales.csv`[cite: 1], rode o app e confira se os nomes das colunas (`order_id`, `customer_id`, `category`, `status`, `order_date`, `quantity`, `unit_price`) batem com o CSV real — ajustando apenas o mapeamento em `data_prep.py` se necessário[cite: 1].
-- **Prints reais em `assets/`**: Tire um print nítido do **Painel** (mostrando os cards e o gráfico Plotly) e um print do **Chat** respondendo uma pergunta (por exemplo, sobre a receita média por cliente ou receita total) e salve como `assets/painel.png` e `assets/chat.png`[cite: 1].
-- **Coerência de arquivos citados**: Garanta que todas as pastas e arquivos mencionados no `README.md` existam no repositório e não estejam vazios (por exemplo, se não for versionar `data/processed/sales_clean.csv`, remova-o da árvore do README ou adicione um `.gitkeep`)[cite: 1].
-- **Segurança do `.env`**: Confirme com `git status` que o `.env` está ignorado e que apenas o `.env.example` será enviado[cite: 1].
-- **Números sincronizados**: Confira se o valor respondido no chat bate exatamente com o exibido nos cards do painel[cite: 1].
+- **Base real preenchida**: Assim que colocar os dados reais no `data/raw/sales.csv`, rode o app e confira se os nomes das colunas (`order_id`, `customer_id`, `category`, `status`, `order_date`, `quantity`, `unit_price`) batem com o CSV real — ajustando apenas o mapeamento em `data_prep.py` se necessário.
+- **Prints reais em `assets/`**: Tire um print nítido do **Painel** (mostrando os cards e o gráfico Plotly) e um print do **Chat** respondendo uma pergunta (por exemplo, sobre a receita média por cliente ou receita total) e salve como `assets/painel.png` e `assets/chat.png`.
+- **Coerência de arquivos citados**: Garanta que todas as pastas e arquivos mencionados no `README.md` existam no repositório e não estejam vazios (por exemplo, se não for versionar `data/processed/sales_clean.csv`, remova-o da árvore do README ou adicione um `.gitkeep`).
+- **Segurança do `.env`**: Confirme com `git status` que o `.env` está ignorado e que apenas o `.env.example` será enviado.
+- **Números sincronizados**: Confira se o valor respondido no chat bate exatamente com o exibido nos cards do painel.
 - **Configuração do repositório no GitHub**:
-  - Repositório **público** na sua conta (`douglasfariasil`)[cite: 1].
-  - Nome legível, em **minúsculas** e **sem acento** (ex.: `data-pilot`)[cite: 1].
-  - Envie o link da raiz do repositório (ex.: `[https://github.com/douglasfariasil/data-pilot](https://github.com/douglasfariasil/data-pilot)`), e não de um arquivo interno[cite: 1].
+  - Repositório **público** na sua conta (`douglasfariasil`).
+  - Nome legível, em **minúsculas** e **sem acento** (ex.: `data-pilot`).
+  - Envie o link da raiz do repositório (ex.: `[https://github.com/douglasfariasil/data-pilot](https://github.com/douglasfariasil/data-pilot)`), e não de um arquivo interno.
 
 Assim que você colocar o `sales.csv` real, se quiser colar aqui as primeiras linhas ou os nomes das colunas dele, ajustamos o `data_prep.py` em segundos!
+
+---
+# Arquitetura
+```
+                  DATA PILOT
+                         |
+              +----------+----------+
+              |                     |
+          DASHBOARD              AI AGENT
+              |                     |
+       Streamlit + Plotly      OpenRouter
+              |                     |
+              |                Tool Calling
+              |                     |
+              +----------+----------+
+                         |
+                  BUSINESS LOGIC
+                         |
+                  METRICS ENGINE
+                         |
+                  DATA PIPELINE
+                         |
+                  CSV / DATABASE
+
+```
+
+## Base de dados recomendada: Olist
+
+Repositório com os arquivos CSV da Olist
+
+- link da  arquivos CSV da Olist: [https://github.com/infobarbosa/dataset-olist](https://github.com/infobarbosa/dataset-olist)
+
+Conjunto de dados públicos de comércio eletrônico brasileiro por Olist
+
+- Link da Dataset oficial da Olist no Kaggle: [https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
+
+A licença é CC BY-NC-SA 4.0: permite uso educacional e de pesquisa não comercial, exige atribuição e determina compartilhamento sob a mesma licença.

@@ -36,7 +36,7 @@ def render_dashboard(df: pd.DataFrame, category_col: str = "category") -> None:
     selected_category = st.selectbox("Filtrar por categoria", options=categories, index=0)
     category_arg = None if selected_category == "Todas" else selected_category
 
-    rev = metrics.total_revenue(df, category=category_arg, category_col=category_col)
+    rev = metrics.total_revenue(df, category=category_arg)
     orders = metrics.total_orders(df, category=category_arg)
     ticket = metrics.average_ticket(df, category=category_arg)
     customers = metrics.unique_customers(df, category=category_arg)

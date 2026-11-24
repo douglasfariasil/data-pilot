@@ -60,3 +60,65 @@ def test_metrics_handle_empty_dataframe() -> None:
     assert metrics.unique_customers(empty_df) == 0
     assert metrics.cancellation_rate(empty_df) == 0.0
     assert metrics.monthly_revenue(empty_df).empty
+
+
+def test_metrics_with_multiple_items_per_order() -> None:
+    df = pd.DataFrame(
+        {
+            "order_id": [
+                "ORD-1",
+                "ORD-1",
+                "ORD-2",
+                "ORD-2",
+                "ORD-3",
+            ],
+            "customer_id": [
+                "C1",
+                "C1",
+                "C2",
+                "C2",
+                "C3",
+            ],
+            "category": [
+                "Eletronicos",
+                "Livros",
+                "Eletronicos",
+                "Eletronicos",
+                "Livros",
+            ],
+            "status": [
+                "completed",
+                "completed",
+                "cancelled",
+                "cancelled",
+                "completed",
+            ],
+            "order_date": pd.to_datetime(
+                [
+                    "2026-01-10",
+                    "2026-01-10",
+                    "2026-01-15",
+                    "2026-01-15",
+                    "2026-02-05",
+                ]
+            ),
+            "revenue": [100.0, 50.0, 30.0, 20.0, 40.0],
+        }
+    )
+
+    # Indicadores gerais
+    assert metrics.total_revenue(df) == 190.0
+    assert metrics.total_orders(df) == 2
+    assert metrics.average_ticket(df) == 95.0
+    assert metrics.unique_customers(df) == 2
+    assert round(metrics.cancellation_rate(df), 2) == 33.33
+
+    # Categoria Eletrônicos
+    assert metrics.total_revenue(df, category="Eletronicos") == 100.0
+    assert metrics.total_orders(df, category="Eletronicos") == 1
+    assert metrics.cancellation_rate(df, category="Eletronicos") == 50.0
+
+    # Categoria Livros
+    assert metrics.total_revenue(df, category="Livros") == 90.0
+    assert metrics.total_orders(df, category="Livros") == 2
+    assert metrics.cancellation_rate(df, category="Livros") == 0.0

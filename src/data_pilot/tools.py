@@ -1,10 +1,13 @@
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
 
 import pandas as pd
 
 from data_pilot import metrics
+
+logger = logging.getLogger(__name__)
 
 
 def get_tool_definitions() -> list[dict[str, Any]]:
@@ -192,21 +195,40 @@ def execute_tool_call(
     arguments_json: str | None,
     registry: dict[str, Callable[..., Any]],
 ) -> dict[str, Any]:
-    """Executa uma ferramenta registrada de forma segura e retorna um JSON serializável."""
-    func = registry.get(tool_name)
-    if func is None:
-        return {"error": f"Ferramenta desconhecida: {tool_name}"}
+    """Executa uma ferramenta com validação de argumentos e tratamento seguro de erros."""
 
-    args: dict[str, Any] = {}
-    if arguments_json:
+    func = registry.get(tool_name)
+
+    if func is None:
+        return {"error": "A ferramenta solicitada não está disponível."}
+
+    # Valida e interpreta os argumentos recebidos.
+    if arguments_json and arguments_json.strip():
         try:
             parsed = json.loads(arguments_json)
-            if isinstance(parsed, dict):
-                args = parsed
         except json.JSONDecodeError:
             return {"error": "Argumentos inválidos enviados pelo modelo."}
 
+        if not isinstance(parsed, dict):
+            return {"error": "Os argumentos devem ser enviados como um objeto JSON."}
+
+        allowed_arguments = {"category"}
+        unexpected_arguments = set(parsed) - allowed_arguments
+
+        if unexpected_arguments:
+            return {"error": "A ferramenta recebeu argumentos não permitidos."}
+
+        category = parsed.get("category")
+
+        if category is not None and not isinstance(category, str):
+            return {"error": "O argumento category deve ser um texto ou null."}
+
+        args = {"category": category.strip() or None} if category is not None else {}
+    else:
+        args = {}
+
     try:
         return func(**args)
-    except Exception as exc:
-        return {"error": f"Erro ao executar ferramenta '{tool_name}': {exc}"}
+    except Exception:
+        logger.exception("Falha ao executar a ferramenta '%s'.", tool_name)
+        return {"error": "Não foi possível executar a ferramenta solicitada."}

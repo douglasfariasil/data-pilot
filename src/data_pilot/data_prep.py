@@ -14,8 +14,41 @@ def load_raw_sales(raw_path: Path) -> pd.DataFrame:
 
 
 def parse_order_dates(series: pd.Series, dayfirst: bool = True) -> pd.Series:
-    """Converte uma série de datas de forma segura e padronizada."""
-    parsed = pd.to_datetime(series, errors="coerce", dayfirst=dayfirst)
+    """Converte datas ISO e brasileiras de forma segura."""
+
+    values = series.astype("string").str.strip()
+
+    # Identifica datas ISO: YYYY-MM-DD
+    iso_mask = values.str.match(
+        r"^\d{4}-\d{2}-\d{2}(?:$|[ T])",
+        na=False,
+    )
+
+    parsed = pd.Series(
+        pd.NaT,
+        index=series.index,
+        dtype="datetime64[ns]",
+    )
+
+    # Datas ISO: preserva ano-mês-dia.
+    if iso_mask.any():
+        parsed.loc[iso_mask] = pd.to_datetime(
+            values.loc[iso_mask],
+            errors="coerce",
+            format="ISO8601",
+        )
+
+    # Demais formatos: respeita a configuração dayfirst.
+    other_mask = ~iso_mask & values.notna()
+
+    if other_mask.any():
+        parsed.loc[other_mask] = pd.to_datetime(
+            values.loc[other_mask],
+            errors="coerce",
+            format="mixed",
+            dayfirst=dayfirst,
+        )
+
     return parsed
 
 

@@ -5,6 +5,7 @@ import pandas as pd
 from data_pilot.data_prep import (
     clean_sales_data,
     load_clean_sales,
+    parse_order_dates,
     prepare_sales_pipeline,
     save_clean_sales,
 )
@@ -63,3 +64,19 @@ def test_prepare_sales_pipeline_end_to_end(tmp_path: Path) -> None:
     assert clean_file.exists()
     assert len(result) == 3
     assert "revenue" in result.columns
+
+
+def test_parse_order_dates_supports_iso_and_brazilian_formats() -> None:
+    dates = pd.Series(
+        [
+            "2016-10-02 12:30:00",
+            "10/01/2026",
+            "data_invalida",
+        ]
+    )
+
+    parsed = parse_order_dates(dates, dayfirst=True)
+
+    assert parsed.iloc[0] == pd.Timestamp("2016-10-02 12:30:00")
+    assert parsed.iloc[1] == pd.Timestamp("2026-01-10")
+    assert pd.isna(parsed.iloc[2])
