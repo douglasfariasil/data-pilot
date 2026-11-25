@@ -12,6 +12,8 @@ from data_pilot.tools import build_tool_registry, execute_tool_call, get_tool_de
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_CALLS = 3
+MAX_MESSAGE_LENGTH = 2000
+MAX_TOOL_RESULT_BYTES = 16 * 1024
 
 SYSTEM_PROMPT = (
     "Você é o assistente do Data Pilot, um painel de análise de vendas em português. "
@@ -97,6 +99,75 @@ def extract_response_message(response: object):
     return message
 
 
+def validate_tool_calls(tool_calls: list) -> str | None:
+    """Valida a estrutura das chamadas de ferramentas antes da execução."""
+
+    if len(tool_calls) > MAX_TOOL_CALLS:
+        return "A consulta solicitou operações demais de uma só vez."
+
+    seen_calls = set()
+    seen_ids = set()
+
+    for tool_call in tool_calls:
+        call_id = getattr(tool_call, "id", None)
+        function = getattr(tool_call, "function", None)
+
+        if not isinstance(call_id, str) or not call_id.strip():
+            return "A chamada de ferramenta possui um identificador inválido."
+
+        if call_id in seen_ids:
+            return "A consulta contém identificadores de chamadas repetidos."
+
+        seen_ids.add(call_id)
+
+        if function is None:
+            return "A chamada de ferramenta possui uma estrutura inválida."
+
+        tool_name = getattr(function, "name", None)
+        arguments = getattr(function, "arguments", None)
+
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            return "A chamada de ferramenta possui um nome inválido."
+
+        if not isinstance(arguments, str):
+            return "Os argumentos da ferramenta possuem um formato inválido."
+
+        try:
+            parsed_arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            return "Os argumentos da ferramenta não são um JSON válido."
+
+        if not isinstance(parsed_arguments, dict):
+            return "Os argumentos da ferramenta devem ser um objeto JSON."
+
+        call_signature = (
+            tool_name,
+            json.dumps(
+                parsed_arguments,
+                sort_keys=True,
+                ensure_ascii=False,
+            ),
+        )
+
+        if call_signature in seen_calls:
+            return "A consulta gerou operações repetidas."
+
+        seen_calls.add(call_signature)
+
+    return None
+
+def serialize_tool_result(result: dict) -> str:
+    """Serializa o resultado e verifica o limite de tamanho permitido."""
+
+    serialized = json.dumps(result, ensure_ascii=False)
+    result_size = len(serialized.encode("utf-8"))
+
+    if result_size > MAX_TOOL_RESULT_BYTES:
+        raise ValueError("O resultado da ferramenta ultrapassou o limite permitido.")
+
+    return serialized
+
+
 class DataPilotAgent:
     """Agente que usa tool calling via OpenRouter mantendo o cálculo em Python."""
 
@@ -124,6 +195,18 @@ class DataPilotAgent:
             return "Digite uma pergunta sobre as vendas para eu consultar as métricas."
 
         message = user_message.strip()
+
+        if len(message) > MAX_MESSAGE_LENGTH:
+            logger.warning(
+                "Mensagem rejeitada por exceder o limite de %s caracteres.",
+                MAX_MESSAGE_LENGTH,
+            )
+            return (
+                f"Sua pergunta ultrapassou o limite de "
+                f"{MAX_MESSAGE_LENGTH} caracteres. "
+                "Resuma sua pergunta e tente novamente."
+            )
+
         must_use_tools = requires_data_tool(message)
 
         try:
@@ -143,54 +226,25 @@ class DataPilotAgent:
             )
 
             assistant_msg = extract_response_message(first_response)
+
             tool_calls = getattr(assistant_msg, "tool_calls", None) or []
 
-            if len(tool_calls) > MAX_TOOL_CALLS:
-                logger.warning(
-                    "O modelo solicitou %s ferramentas; limite permitido: %s.",
-                    len(tool_calls),
-                    MAX_TOOL_CALLS,
-                )
-                return (
-                    "A consulta solicitou operações demais de uma só vez. "
-                    "Tente fazer uma pergunta mais específica."
-                )
+            validation_error = validate_tool_calls(tool_calls)
 
-            seen_calls = set()
+            if validation_error:
+                logger.warning("Chamada de ferramenta rejeitada: %s", validation_error)
+                return validation_error
 
             for tc in tool_calls:
-                tool_name = tc.function.name
-                arguments = tc.function.arguments or "{}"
-
-                if tool_name not in self.registry:
+                if tc.function.name not in self.registry:
                     logger.warning(
                         "O modelo solicitou uma ferramenta desconhecida: %s.",
-                        tool_name,
+                        tc.function.name,
                     )
                     return (
                         "Não foi possível realizar a consulta solicitada. "
                         "Tente reformular sua pergunta."
                     )
-
-                try:
-                    normalized_arguments = json.dumps(
-                        json.loads(arguments),
-                        sort_keys=True,
-                        ensure_ascii=False,
-                    )
-                except (json.JSONDecodeError, TypeError):
-                    normalized_arguments = arguments
-
-                call_signature = (tool_name, normalized_arguments)
-
-                if call_signature in seen_calls:
-                    logger.warning(
-                        "O modelo solicitou uma chamada duplicada: %s.",
-                        tool_name,
-                    )
-                    return "A consulta gerou operações repetidas. Tente reformular sua pergunta."
-
-                seen_calls.add(call_signature)
 
             if not tool_calls:
                 if must_use_tools:
@@ -242,11 +296,23 @@ class DataPilotAgent:
                         "Tente reformular sua pergunta ou tente novamente."
                     )
 
+                try:
+                    serialized_result = serialize_tool_result(result)
+                except ValueError:
+                    logger.warning(
+                        "Resultado da ferramenta '%s' excedeu o limite permitido.",
+                        tc.function.name,
+                    )
+                    return (
+                        "O resultado da consulta ultrapassou o limite permitido. "
+                        "Tente fazer uma consulta mais específica."
+                    )
+
                 messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": json.dumps(result, ensure_ascii=False),
+                        "content": serialized_result,
                     }
                 )
 

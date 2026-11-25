@@ -5,7 +5,14 @@ import pandas as pd
 import pytest
 
 from data_pilot.config import Settings
-from data_pilot.llm_agent import DataPilotAgent, requires_data_tool
+from data_pilot.llm_agent import (
+    MAX_MESSAGE_LENGTH,
+    MAX_TOOL_RESULT_BYTES,
+    DataPilotAgent,
+    requires_data_tool,
+    serialize_tool_result,
+    validate_tool_calls,
+)
 
 
 def make_response(message: SimpleNamespace) -> SimpleNamespace:
@@ -506,3 +513,209 @@ def test_agent_handles_second_response_without_choices(
 
     assert "Não foi possível concluir sua consulta" in answer
     assert len(client.chat.completions.calls) == 2
+
+
+def test_agent_accepts_message_at_maximum_length(
+    agent: DataPilotAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeClient(
+        [
+            make_response(
+                SimpleNamespace(
+                    content="Olá! Como posso ajudar?",
+                    tool_calls=None,
+                )
+            )
+        ]
+    )
+
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+
+    message = "a" * MAX_MESSAGE_LENGTH
+
+    result = agent.ask(message)
+
+    assert result == "Olá! Como posso ajudar?"
+    assert len(client.chat.completions.calls) == 1
+
+
+def test_agent_rejects_message_above_maximum_length(
+    agent: DataPilotAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeClient([])
+
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+
+    message = "a" * (MAX_MESSAGE_LENGTH + 1)
+
+    result = agent.ask(message)
+
+    assert "ultrapassou o limite" in result
+    assert len(client.chat.completions.calls) == 0
+
+
+def test_agent_rejects_extremely_large_message(
+    agent: DataPilotAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeClient([])
+
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+
+    message = "a" * 100_000
+
+    result = agent.ask(message)
+
+    assert "ultrapassou o limite" in result
+    assert len(client.chat.completions.calls) == 0
+
+
+@pytest.mark.parametrize(
+    "tool_call",
+    [
+        SimpleNamespace(function=SimpleNamespace(name="get_total_revenue", arguments="{}")),
+        SimpleNamespace(
+            id="call-1",
+            function=None,
+        ),
+        SimpleNamespace(
+            id="call-1",
+            function=SimpleNamespace(arguments="{}"),
+        ),
+        SimpleNamespace(
+            id="call-1",
+            function=SimpleNamespace(name="", arguments="{}"),
+        ),
+        SimpleNamespace(
+            id="call-1",
+            function=SimpleNamespace(name="get_total_revenue", arguments="{"),
+        ),
+        SimpleNamespace(
+            id="call-1",
+            function=SimpleNamespace(name="get_total_revenue", arguments="[]"),
+        ),
+        SimpleNamespace(
+            id="call-1",
+            function=SimpleNamespace(name="get_total_revenue", arguments=None),
+        ),
+    ],
+)
+def test_validate_tool_calls_rejects_invalid_structures(
+    tool_call: SimpleNamespace,
+) -> None:
+    assert validate_tool_calls([tool_call]) is not None
+
+
+def test_validate_tool_calls_accepts_valid_call() -> None:
+    tool_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(
+            name="get_total_revenue",
+            arguments='{"category": "electronics"}',
+        ),
+    )
+
+    assert validate_tool_calls([tool_call]) is None
+
+
+def test_validate_tool_calls_rejects_duplicate_ids() -> None:
+    tool_calls = [
+        SimpleNamespace(
+            id="call-1",
+            function=SimpleNamespace(name="get_total_revenue", arguments="{}"),
+        ),
+        SimpleNamespace(
+            id="call-1",
+            function=SimpleNamespace(name="get_total_orders", arguments="{}"),
+        ),
+    ]
+
+    assert validate_tool_calls(tool_calls) is not None
+
+
+def test_validate_tool_calls_rejects_duplicate_operations() -> None:
+    tool_calls = [
+        SimpleNamespace(
+            id="call-1",
+            function=SimpleNamespace(name="get_total_revenue", arguments='{"category":"all"}'),
+        ),
+        SimpleNamespace(
+            id="call-2",
+            function=SimpleNamespace(name="get_total_revenue", arguments='{ "category": "all" }'),
+        ),
+    ]
+
+    assert validate_tool_calls(tool_calls) is not None
+
+
+def test_validate_tool_calls_rejects_more_than_three_calls() -> None:
+    tool_calls = [
+        SimpleNamespace(
+            id=f"call-{index}",
+            function=SimpleNamespace(
+                name="get_total_revenue", arguments=f'{{"category": "{index}"}}'
+            ),
+        )
+        for index in range(4)
+    ]
+
+    assert validate_tool_calls(tool_calls) is not None
+
+
+def test_serialize_tool_result_accepts_result_at_limit() -> None:
+    result = {"data": "a" * (MAX_TOOL_RESULT_BYTES - len('{"data": ""}'))}
+
+    serialized = serialize_tool_result(result)
+
+    assert len(serialized.encode("utf-8")) == MAX_TOOL_RESULT_BYTES
+
+
+def test_serialize_tool_result_rejects_result_above_limit() -> None:
+    result = {"data": "a" * MAX_TOOL_RESULT_BYTES}
+
+    with pytest.raises(ValueError, match="ultrapassou o limite"):
+        serialize_tool_result(result)
+
+
+def test_serialize_tool_result_counts_utf8_bytes() -> None:
+    result = {"data": "á" * 100}
+
+    serialized = serialize_tool_result(result)
+
+    assert len(serialized.encode("utf-8")) > len(serialized)
+
+
+def test_agent_stops_when_tool_result_exceeds_limit(
+    agent: DataPilotAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(
+            name="get_total_revenue",
+            arguments="{}",
+        ),
+    )
+
+    first_response = make_response(
+        SimpleNamespace(
+            content=None,
+            tool_calls=[tool_call],
+        )
+    )
+
+    client = FakeClient([first_response])
+
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+    monkeypatch.setitem(
+        agent.registry,
+        "get_total_revenue",
+        lambda category=None: {"data": "a" * MAX_TOOL_RESULT_BYTES},
+    )
+
+    answer = agent.ask("Qual foi o faturamento?")
+
+    assert "ultrapassou o limite permitido" in answer
+    assert len(client.chat.completions.calls) == 1
