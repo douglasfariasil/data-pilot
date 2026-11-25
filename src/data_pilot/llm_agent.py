@@ -11,6 +11,8 @@ from data_pilot.tools import build_tool_registry, execute_tool_call, get_tool_de
 
 logger = logging.getLogger(__name__)
 
+MAX_TOOL_CALLS = 3
+
 SYSTEM_PROMPT = (
     "Você é o assistente do Data Pilot, um painel de análise de vendas em português. "
     "Regra absoluta: nunca calcule, estime ou invente números de vendas. "
@@ -50,6 +52,21 @@ DATA_KEYWORDS = {
     "crescimento",
     "quanto",
     "quantos",
+    "desempenho",
+    "tendencia",
+    "evolucao",
+    "ranking",
+    "maior",
+    "menor",
+    "melhor",
+    "pior",
+    "top",
+    "mostrar",
+    "mostre",
+    "comparacao",
+    "queda",
+    "aumento",
+    "reducao",
 }
 
 
@@ -57,13 +74,27 @@ def requires_data_tool(user_message: str) -> bool:
     """Identifica perguntas que exigem consulta aos dados de vendas."""
 
     normalized = unicodedata.normalize("NFKD", user_message.casefold())
-    normalized = "".join(
-        char for char in normalized if not unicodedata.combining(char)
-    )
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
 
     words = set(re.findall(r"\w+", normalized))
 
     return bool(words & DATA_KEYWORDS)
+
+
+def extract_response_message(response: object):
+    """Extrai a mensagem da resposta da API, validando sua estrutura."""
+
+    choices = getattr(response, "choices", None)
+
+    if not choices:
+        raise ValueError("A API retornou uma resposta sem opções.")
+
+    message = getattr(choices[0], "message", None)
+
+    if message is None:
+        raise ValueError("A API retornou uma opção sem mensagem.")
+
+    return message
 
 
 class DataPilotAgent:
@@ -82,6 +113,8 @@ class DataPilotAgent:
         return OpenAI(
             api_key=self.cfg.openrouter_api_key,
             base_url=self.cfg.openrouter_base_url,
+            timeout=30.0,
+            max_retries=0,
         )
 
     def ask(self, user_message: str) -> str:
@@ -109,8 +142,55 @@ class DataPilotAgent:
                 temperature=0,
             )
 
-            assistant_msg = first_response.choices[0].message
+            assistant_msg = extract_response_message(first_response)
             tool_calls = getattr(assistant_msg, "tool_calls", None) or []
+
+            if len(tool_calls) > MAX_TOOL_CALLS:
+                logger.warning(
+                    "O modelo solicitou %s ferramentas; limite permitido: %s.",
+                    len(tool_calls),
+                    MAX_TOOL_CALLS,
+                )
+                return (
+                    "A consulta solicitou operações demais de uma só vez. "
+                    "Tente fazer uma pergunta mais específica."
+                )
+
+            seen_calls = set()
+
+            for tc in tool_calls:
+                tool_name = tc.function.name
+                arguments = tc.function.arguments or "{}"
+
+                if tool_name not in self.registry:
+                    logger.warning(
+                        "O modelo solicitou uma ferramenta desconhecida: %s.",
+                        tool_name,
+                    )
+                    return (
+                        "Não foi possível realizar a consulta solicitada. "
+                        "Tente reformular sua pergunta."
+                    )
+
+                try:
+                    normalized_arguments = json.dumps(
+                        json.loads(arguments),
+                        sort_keys=True,
+                        ensure_ascii=False,
+                    )
+                except (json.JSONDecodeError, TypeError):
+                    normalized_arguments = arguments
+
+                call_signature = (tool_name, normalized_arguments)
+
+                if call_signature in seen_calls:
+                    logger.warning(
+                        "O modelo solicitou uma chamada duplicada: %s.",
+                        tool_name,
+                    )
+                    return "A consulta gerou operações repetidas. Tente reformular sua pergunta."
+
+                seen_calls.add(call_signature)
 
             if not tool_calls:
                 if must_use_tools:
@@ -176,8 +256,10 @@ class DataPilotAgent:
                 temperature=0,
             )
 
+            second_assistant_msg = extract_response_message(second_response)
+
             return (
-                second_response.choices[0].message.content
+                second_assistant_msg.content
                 or "Os dados foram consultados, mas não foi possível gerar uma explicação."
             )
 

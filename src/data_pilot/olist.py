@@ -11,9 +11,7 @@ def build_olist_sales(source_dir: Path, output_path: Path) -> pd.DataFrame:
     items = pd.read_csv(source_dir / "olist_order_items_dataset.csv")
     customers = pd.read_csv(source_dir / "olist_customers_dataset.csv")
     products = pd.read_csv(source_dir / "olist_products_dataset.csv")
-    translations = pd.read_csv(
-        source_dir / "product_category_name_translation.csv"
-    )
+    translations = pd.read_csv(source_dir / "product_category_name_translation.csv")
 
     # 2. Validar as colunas necessárias
     required_columns = {
@@ -49,9 +47,7 @@ def build_olist_sales(source_dir: Path, output_path: Path) -> pd.DataFrame:
     for name, required in required_columns.items():
         missing = required - set(datasets[name].columns)
         if missing:
-            raise ValueError(
-                f"Colunas ausentes em {name}: {sorted(missing)}"
-            )
+            raise ValueError(f"Colunas ausentes em {name}: {sorted(missing)}")
 
     # 3. Preparar os dados de pedidos
     orders = orders[
@@ -86,9 +82,7 @@ def build_olist_sales(source_dir: Path, output_path: Path) -> pd.DataFrame:
     )
 
     # 6. Relacionar produtos e categorias
-    products = products[
-        ["product_id", "product_category_name"]
-    ].copy()
+    products = products[["product_id", "product_category_name"]].copy()
 
     translations = translations[
         [
@@ -112,9 +106,7 @@ def build_olist_sales(source_dir: Path, output_path: Path) -> pd.DataFrame:
     )
 
     # 7. Relacionar clientes
-    customers = customers[
-        ["customer_id", "customer_unique_id"]
-    ].copy()
+    customers = customers[["customer_id", "customer_unique_id"]].copy()
 
     if customers["customer_id"].duplicated().any():
         raise ValueError("A tabela de clientes contém customer_id duplicado.")
@@ -164,20 +156,14 @@ def build_olist_sales(source_dir: Path, output_path: Path) -> pd.DataFrame:
     no_item = sales["order_item_id"].isna()
 
     sales.loc[no_item, "category"] = "sem_itens"
-    sales.loc[~no_item, "category"] = (
-        sales.loc[~no_item, "category"].fillna("sem_categoria")
-    )
+    sales.loc[~no_item, "category"] = sales.loc[~no_item, "category"].fillna("sem_categoria")
 
     # 11. Preparar quantidade e preços
     sales["quantity"] = no_item.map({True: 0, False: 1}).astype("int64")
 
-    sales["unit_price"] = pd.to_numeric(
-        sales["price"], errors="coerce"
-    ).fillna(0.0)
+    sales["unit_price"] = pd.to_numeric(sales["price"], errors="coerce").fillna(0.0)
 
-    sales["freight_value"] = pd.to_numeric(
-        sales["freight_value"], errors="coerce"
-    ).fillna(0.0)
+    sales["freight_value"] = pd.to_numeric(sales["freight_value"], errors="coerce").fillna(0.0)
 
     # 12. Calcular receita sem incluir frete
     sales["revenue"] = sales["quantity"] * sales["unit_price"]

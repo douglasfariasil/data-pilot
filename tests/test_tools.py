@@ -58,9 +58,7 @@ def test_execute_tool_rejects_non_object_arguments() -> None:
         registry,
     )
 
-    assert output == {
-        "error": "Os argumentos devem ser enviados como um objeto JSON."
-    }
+    assert output == {"error": "Os argumentos devem ser enviados como um objeto JSON."}
 
 
 def test_execute_tool_rejects_unexpected_arguments() -> None:
@@ -72,9 +70,7 @@ def test_execute_tool_rejects_unexpected_arguments() -> None:
         registry,
     )
 
-    assert output == {
-        "error": "A ferramenta recebeu argumentos não permitidos."
-    }
+    assert output == {"error": "A ferramenta recebeu argumentos não permitidos."}
 
 
 def test_execute_tool_rejects_invalid_category_type() -> None:
@@ -86,9 +82,7 @@ def test_execute_tool_rejects_invalid_category_type() -> None:
         registry,
     )
 
-    assert output == {
-        "error": "O argumento category deve ser um texto ou null."
-    }
+    assert output == {"error": "O argumento category deve ser um texto ou null."}
 
 
 def test_execute_tool_normalizes_category() -> None:
@@ -110,9 +104,7 @@ def test_execute_tool_rejects_unknown_tool() -> None:
         {},
     )
 
-    assert output == {
-        "error": "A ferramenta solicitada não está disponível."
-    }
+    assert output == {"error": "A ferramenta solicitada não está disponível."}
 
 
 def test_execute_tool_does_not_expose_internal_exception() -> None:
@@ -125,7 +117,5 @@ def test_execute_tool_does_not_expose_internal_exception() -> None:
         {"failing_tool": failing_tool},
     )
 
-    assert output == {
-        "error": "Não foi possível executar a ferramenta solicitada."
-    }
+    assert output == {"error": "Não foi possível executar a ferramenta solicitada."}
     assert "detalhe interno confidencial" not in str(output)
