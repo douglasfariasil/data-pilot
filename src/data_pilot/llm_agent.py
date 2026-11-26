@@ -3,6 +3,7 @@ import logging
 import re
 import unicodedata
 
+import openai
 import pandas as pd
 from openai import OpenAI
 
@@ -337,8 +338,50 @@ class DataPilotAgent:
                 or "Os dados foram consultados, mas não foi possível gerar uma explicação."
             )
 
+        except openai.APITimeoutError:
+            logger.exception("Timeout ao aguardar resposta do serviço de IA.")
+            return (
+                "O serviço de IA demorou para responder. "
+                "Tente novamente em alguns instantes."
+            )
+
+        except openai.APIConnectionError:
+            logger.exception("Falha de conexão com o serviço de IA.")
+            return (
+                "Não foi possível estabelecer conexão com o serviço de IA. "
+                "Verifique sua conexão e tente novamente."
+            )
+
+        except openai.RateLimitError:
+            logger.exception("Limite de solicitações do serviço de IA atingido.")
+            return (
+                "O serviço de IA recebeu muitas solicitações. "
+                "Aguarde alguns instantes e tente novamente."
+            )
+
+        except openai.AuthenticationError:
+            logger.exception("Falha de autenticação no serviço de IA.")
+            return (
+                "Não foi possível autenticar o acesso ao serviço de IA. "
+                "Verifique a configuração do serviço."
+            )
+
+        except openai.PermissionDeniedError:
+            logger.exception("Acesso negado pelo serviço de IA.")
+            return (
+                "O acesso ao serviço de IA não está autorizado. "
+                "Verifique as permissões da configuração."
+            )
+
+        except openai.APIError:
+            logger.exception("Erro retornado pela API do serviço de IA.")
+            return (
+                "O serviço de IA apresentou uma falha ao processar a solicitação. "
+                "Tente novamente mais tarde."
+            )
+
         except Exception:
-            logger.exception("Falha ao processar pergunta no Data Pilot.")
+            logger.exception("Falha inesperada ao processar pergunta no Data Pilot.")
             return (
                 "Não foi possível concluir sua consulta no momento. "
                 "Verifique a disponibilidade do serviço e tente novamente."

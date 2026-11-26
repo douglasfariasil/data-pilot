@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import openai
 import pandas as pd
 import pytest
 
@@ -271,6 +272,86 @@ def test_agent_handles_second_api_call_failure(
     assert "Não foi possível concluir sua consulta" in answer
     assert "Falha ao gerar explicação" not in answer
     assert create.call_count == 2
+
+
+def make_api_status_error(
+    error_class: type[Exception],
+    status_code: int,
+) -> Exception:
+    response = Mock()
+    response.status_code = status_code
+    response.headers = {}
+    response.request = Mock()
+    response.text = ""
+
+    return error_class(
+        message="Erro simulado do serviço",
+        response=response,
+        body=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_message"),
+    [
+        (
+            openai.APITimeoutError(request=Mock()),
+            "O serviço de IA demorou para responder.",
+        ),
+        (
+            openai.APIConnectionError(
+                message="Falha de conexão simulada",
+                request=Mock(),
+            ),
+            "Não foi possível estabelecer conexão",
+        ),
+        (
+            make_api_status_error(openai.RateLimitError, 429),
+            "recebeu muitas solicitações",
+        ),
+        (
+            make_api_status_error(openai.AuthenticationError, 401),
+            "autenticar o acesso",
+        ),
+        (
+            make_api_status_error(openai.PermissionDeniedError, 403),
+            "não está autorizado",
+        ),
+        (
+            make_api_status_error(openai.InternalServerError, 500),
+            "apresentou uma falha",
+        ),
+    ],
+    ids=[
+        "timeout",
+        "connection",
+        "rate-limit",
+        "authentication",
+        "permission-denied",
+        "internal-server-error",
+    ],
+)
+def test_agent_handles_specific_api_errors(
+    agent: DataPilotAgent,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected_message: str,
+) -> None:
+    create = Mock(side_effect=error)
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(create=create)
+        )
+    )
+
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+
+    answer = agent.ask("Como funciona o Data Pilot?")
+
+    assert expected_message in answer
+    assert "Erro simulado do serviço" not in answer
+    assert create.call_count == 1
 
 
 def test_agent_rejects_more_than_three_tool_calls(
