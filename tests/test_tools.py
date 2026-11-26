@@ -1,6 +1,14 @@
+import json
+
 import pandas as pd
 
-from data_pilot.tools import build_tool_registry, execute_tool_call, get_tool_definitions
+from data_pilot.tools import (
+    MAX_CATEGORY_LENGTH,
+    MAX_TOOL_ARGUMENT_BYTES,
+    build_tool_registry,
+    execute_tool_call,
+    get_tool_definitions,
+)
 
 
 def test_tool_definitions_and_execution() -> None:
@@ -119,3 +127,52 @@ def test_execute_tool_does_not_expose_internal_exception() -> None:
 
     assert output == {"error": "Não foi possível executar a ferramenta solicitada."}
     assert "detalhe interno confidencial" not in str(output)
+
+
+def test_execute_tool_rejects_arguments_above_size_limit() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    arguments = '{"category": "' + (
+        "a" * MAX_TOOL_ARGUMENT_BYTES
+    ) + '"}'
+
+    output = execute_tool_call("probe", arguments, registry)
+
+    assert output == {
+        "error": "Os argumentos da ferramenta ultrapassaram o limite permitido."
+    }
+
+
+def test_execute_tool_rejects_category_above_length_limit() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    arguments = '{"category": "' + (
+        "a" * (MAX_CATEGORY_LENGTH + 1)
+    ) + '"}'
+
+    output = execute_tool_call("probe", arguments, registry)
+
+    assert output == {
+        "error": "O argumento category ultrapassou o limite permitido."
+    }
+
+
+def test_execute_tool_accepts_category_at_length_limit() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    category = "a" * MAX_CATEGORY_LENGTH
+    arguments = json.dumps({"category": category})
+
+    output = execute_tool_call("probe", arguments, registry)
+
+    assert output == {"category": category}
+
+
+def test_execute_tool_rejects_non_string_arguments() -> None:
+    registry = {"probe": lambda category=None: {"category": category}}
+
+    output = execute_tool_call("probe", 123, registry)
+
+    assert output == {
+        "error": "Os argumentos da ferramenta possuem um formato inválido."
+    }

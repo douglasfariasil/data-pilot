@@ -9,6 +9,9 @@ from data_pilot import metrics
 
 logger = logging.getLogger(__name__)
 
+MAX_TOOL_ARGUMENT_BYTES = 4 * 1024
+MAX_CATEGORY_LENGTH = 100
+
 
 def get_tool_definitions() -> list[dict[str, Any]]:
     """Define os schemas das ferramentas expostas ao modelo via OpenRouter."""
@@ -199,8 +202,18 @@ def execute_tool_call(
 
     func = registry.get(tool_name)
 
+    if arguments_json is not None and not isinstance(arguments_json, str):
+        return {"error": "Os argumentos da ferramenta possuem um formato inválido."}
+
     if func is None:
         return {"error": "A ferramenta solicitada não está disponível."}
+
+    # Impede argumentos excessivamente grandes.
+    if (
+        arguments_json is not None
+        and len(arguments_json.encode("utf-8")) > MAX_TOOL_ARGUMENT_BYTES
+    ):
+        return {"error": "Os argumentos da ferramenta ultrapassaram o limite permitido."}
 
     # Valida e interpreta os argumentos recebidos.
     if arguments_json and arguments_json.strip():
@@ -223,9 +236,15 @@ def execute_tool_call(
         if category is not None and not isinstance(category, str):
             return {"error": "O argumento category deve ser um texto ou null."}
 
-        args = {"category": category.strip() or None} if category is not None else {}
-    else:
-        args = {}
+        if category is not None:
+            category = category.strip()
+
+            if len(category) > MAX_CATEGORY_LENGTH:
+                return {"error": "O argumento category ultrapassou o limite permitido."}
+
+            args = {"category": category or None}
+        else:
+            args = {}
 
     try:
         return func(**args)

@@ -7,6 +7,7 @@ import pytest
 from data_pilot.config import Settings
 from data_pilot.llm_agent import (
     MAX_MESSAGE_LENGTH,
+    MAX_TOOL_ARGUMENT_BYTES,
     MAX_TOOL_RESULT_BYTES,
     DataPilotAgent,
     requires_data_tool,
@@ -602,6 +603,8 @@ def test_agent_rejects_extremely_large_message(
         ),
     ],
 )
+
+
 def test_validate_tool_calls_rejects_invalid_structures(
     tool_call: SimpleNamespace,
 ) -> None:
@@ -719,3 +722,20 @@ def test_agent_stops_when_tool_result_exceeds_limit(
 
     assert "ultrapassou o limite permitido" in answer
     assert len(client.chat.completions.calls) == 1
+
+def test_validate_tool_calls_rejects_oversized_arguments() -> None:
+    tool_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(
+            name="get_total_revenue",
+            arguments='{"category": "' + (
+                "a" * MAX_TOOL_ARGUMENT_BYTES
+            ) + '"}',
+        ),
+    )
+
+    result = validate_tool_calls([tool_call])
+
+    assert result == (
+        "Os argumentos da ferramenta ultrapassaram o limite permitido."
+    )

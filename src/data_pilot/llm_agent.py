@@ -7,7 +7,12 @@ import pandas as pd
 from openai import OpenAI
 
 from data_pilot.config import Settings, settings
-from data_pilot.tools import build_tool_registry, execute_tool_call, get_tool_definitions
+from data_pilot.tools import (
+    MAX_TOOL_ARGUMENT_BYTES,
+    build_tool_registry,
+    execute_tool_call,
+    get_tool_definitions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +136,9 @@ def validate_tool_calls(tool_calls: list) -> str | None:
 
         if not isinstance(arguments, str):
             return "Os argumentos da ferramenta possuem um formato inválido."
+
+        if len(arguments.encode("utf-8")) > MAX_TOOL_ARGUMENT_BYTES:
+            return "Os argumentos da ferramenta ultrapassaram o limite permitido."
 
         try:
             parsed_arguments = json.loads(arguments)
