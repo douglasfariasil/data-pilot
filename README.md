@@ -104,7 +104,7 @@ cp .env.example .env
 
 Edite o .env:
 
-OPENROUTER_API_KEY=sk-or-v1-sua-chave-aqui
+OPENROUTER_API_KEY=
 
 OPENROUTER_BASE_URL= [https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)
 

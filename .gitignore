@@ -3,30 +3,23 @@ __pycache__/
 *.py[oc]
 *.py[cod]
 *$py.class
+*.egg-info/
+
+# Virtual environments
 .venv/
+
+# Testes, lint e build
 .pytest_cache/
 .ruff_cache/
 build/
 dist/
 wheels/
-*.egg-info/
-
-# Virtual environments
-.venv
 
 # Segredos e variáveis de ambiente
 .env
 
-# Dados processados locais (opcional; mantenha se quiser regenerar via pipeline)
+# Dados processados locais
 data/processed/*.csv
-
-# Datasets brutos e arquivos de origem
-data/raw/*.csv
-data/raw/*.csv.gz
-data/raw/olist_source/
-
-# Resultados de análises gerados localmente
-data/analytics/*.csv
 
 # Datasets brutos e arquivos de origem
 data/raw/*.csv
