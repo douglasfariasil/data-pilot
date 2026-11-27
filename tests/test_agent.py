@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import re
 from types import SimpleNamespace
@@ -240,6 +241,42 @@ def test_agent_handles_missing_api_key(
 
     assert "Não foi possível concluir sua consulta" in answer
     assert "OPENROUTER_API_KEY" not in answer
+
+@pytest.mark.parametrize(
+    ("config_overrides", "expected_error"),
+    [
+        (
+            {"openrouter_api_key": ""},
+            "OPENROUTER_API_KEY não configurada.",
+        ),
+        (
+            {"openrouter_base_url": ""},
+            "OPENROUTER_BASE_URL não configurada.",
+        ),
+        (
+            {"openrouter_model": ""},
+            "OPENROUTER_MODEL não configurado.",
+        ),
+    ],
+)
+def test_agent_rejects_missing_openrouter_configuration(
+    sample_df: pd.DataFrame,
+    config_overrides: dict[str, str],
+    expected_error: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cfg = Settings(openrouter_api_key="test-key")
+    cfg = dataclasses.replace(cfg, **config_overrides)
+
+    agent = DataPilotAgent(sample_df, cfg=cfg)
+    openai_mock = Mock()
+
+    monkeypatch.setattr("data_pilot.llm_agent.OpenAI", openai_mock)
+
+    with pytest.raises(ValueError, match=expected_error):
+        agent._build_client()
+
+    openai_mock.assert_not_called()
 
 
 def test_agent_handles_first_api_call_failure(

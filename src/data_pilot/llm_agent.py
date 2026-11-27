@@ -192,7 +192,13 @@ class DataPilotAgent:
 
     def _build_client(self) -> OpenAI:
         if not self.cfg.openrouter_api_key:
-            raise ValueError("OPENROUTER_API_KEY não configurada no arquivo .env.")
+            raise ValueError("OPENROUTER_API_KEY não configurada.")
+
+        if not self.cfg.openrouter_base_url:
+            raise ValueError("OPENROUTER_BASE_URL não configurada.")
+
+        if not self.cfg.openrouter_model:
+            raise ValueError("OPENROUTER_MODEL não configurado.")
 
         return OpenAI(
             api_key=self.cfg.openrouter_api_key,
