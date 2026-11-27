@@ -198,7 +198,7 @@ class DataPilotAgent:
             api_key=self.cfg.openrouter_api_key,
             base_url=self.cfg.openrouter_base_url,
             timeout=30.0,
-            max_retries=0,
+            max_retries=2,
         )
 
     def ask(self, user_message: str) -> str:

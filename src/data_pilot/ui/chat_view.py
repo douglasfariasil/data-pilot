@@ -1,8 +1,13 @@
+import logging
+
 import pandas as pd
 import streamlit as st
 
 from data_pilot.config import settings
 from data_pilot.llm_agent import DataPilotAgent
+from data_pilot.logging_config import get_request_id
+
+logger = logging.getLogger(__name__)
 
 
 def render_chat_view(df: pd.DataFrame) -> None:
@@ -44,8 +49,21 @@ def render_chat_view(df: pd.DataFrame) -> None:
 
     with st.chat_message("assistant"):
         with st.spinner("Consultando métricas e gerando resposta..."):
-            agent = DataPilotAgent(df=df)
-            answer = agent.ask(user_prompt)
+            try:
+                agent = DataPilotAgent(df=df)
+                answer = agent.ask(user_prompt)
+            except Exception as exc:
+                logger.error(
+                    "Falha inesperada na interface do chat | "
+                    "request_id=%s | error_type=%s",
+                    get_request_id(),
+                    type(exc).__name__,
+                )
+                answer = (
+                    "Ocorreu um erro inesperado ao processar sua pergunta. "
+                    "Tente novamente em instantes."
+                )
+
             st.markdown(answer)
 
     st.session_state.chat_messages.append({"role": "assistant", "content": answer})

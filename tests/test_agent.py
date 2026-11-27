@@ -548,7 +548,7 @@ def test_agent_detects_duplicate_calls_with_different_json_format(
     assert len(client.chat.completions.calls) == 1
 
 
-def test_agent_builds_client_with_timeout_and_retries_disabled(
+def test_agent_builds_client_with_timeout_and_retries_enabled(
     agent: DataPilotAgent,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -566,7 +566,7 @@ def test_agent_builds_client_with_timeout_and_retries_disabled(
         api_key="test-key",
         base_url=agent.cfg.openrouter_base_url,
         timeout=30.0,
-        max_retries=0,
+        max_retries=2,
     )
 
 
