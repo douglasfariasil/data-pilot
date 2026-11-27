@@ -1,11 +1,13 @@
 import json
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
 import pandas as pd
 
 from data_pilot import metrics
+from data_pilot.logging_config import get_request_id
 
 logger = logging.getLogger(__name__)
 
@@ -209,13 +211,12 @@ def execute_tool_call(
         return {"error": "A ferramenta solicitada não está disponível."}
 
     # Impede argumentos excessivamente grandes.
-    if (
-        arguments_json is not None
-        and len(arguments_json.encode("utf-8")) > MAX_TOOL_ARGUMENT_BYTES
-    ):
+    if arguments_json is not None and len(arguments_json.encode("utf-8")) > MAX_TOOL_ARGUMENT_BYTES:
         return {"error": "Os argumentos da ferramenta ultrapassaram o limite permitido."}
 
     # Valida e interpreta os argumentos recebidos.
+    args = {}
+
     if arguments_json and arguments_json.strip():
         try:
             parsed = json.loads(arguments_json)
@@ -246,8 +247,40 @@ def execute_tool_call(
         else:
             args = {}
 
+    request_id = get_request_id()
+    start_time = time.perf_counter()
+
+    logger.info(
+        "Execução de ferramenta iniciada | request_id=%s | tool=%s",
+        request_id,
+        tool_name,
+    )
+
     try:
-        return func(**args)
-    except Exception:
-        logger.exception("Falha ao executar a ferramenta '%s'.", tool_name)
+        result = func(**args)
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        logger.info(
+            "Execução de ferramenta concluída | request_id=%s | tool=%s | "
+            "duration_ms=%.2f",
+            request_id,
+            tool_name,
+            duration_ms,
+        )
+
+        return result
+
+    except Exception as exc:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        logger.error(
+            "Falha na ferramenta | request_id=%s | tool=%s | "
+            "duration_ms=%.2f | error_type=%s",
+            request_id,
+            tool_name,
+            duration_ms,
+            type(exc).__name__,
+        )
+
         return {"error": "Não foi possível executar a ferramenta solicitada."}

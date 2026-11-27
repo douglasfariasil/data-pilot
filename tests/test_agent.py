@@ -1,3 +1,5 @@
+import logging
+import re
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -15,6 +17,7 @@ from data_pilot.llm_agent import (
     serialize_tool_result,
     validate_tool_calls,
 )
+from data_pilot.logging_config import get_request_id
 
 
 def make_response(message: SimpleNamespace) -> SimpleNamespace:
@@ -98,6 +101,7 @@ def test_does_not_require_tool_for_general_questions(question: str) -> None:
 def test_agent_requires_tool_for_quantitative_question(
     agent: DataPilotAgent,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     tool_call = SimpleNamespace(
         id="call-1",
@@ -124,15 +128,33 @@ def test_agent_requires_tool_for_quantitative_question(
     client = FakeClient([first_response, second_response])
     monkeypatch.setattr(agent, "_build_client", lambda: client)
 
-    answer = agent.ask("Qual foi o faturamento?")
+    with caplog.at_level(logging.INFO):
+        answer = agent.ask("Qual foi o faturamento?")
 
     assert answer == "A receita total foi R$ 100,00."
+
+    # O mesmo request_id deve aparecer no agente e na ferramenta.
+    request_ids = re.findall(r"request_id=([a-f0-9]{8})", caplog.text)
+
+    assert request_ids
+    assert len(set(request_ids)) == 1
+
+    assert "Consulta iniciada" in caplog.text
+    assert "Execução de ferramenta iniciada" in caplog.text
+    assert "Execução de ferramenta concluída" in caplog.text
+    assert "Consulta encerrada" in caplog.text or "Consulta finalizada" in caplog.text
+
+    # O contexto deve ser restaurado após a consulta.
+    assert get_request_id() == "-"
 
     first_call = client.chat.completions.calls[0]
     assert first_call["tool_choice"] == "required"
 
     second_call = client.chat.completions.calls[1]
-    tool_messages = [message for message in second_call["messages"] if message["role"] == "tool"]
+    tool_messages = [
+        message for message in second_call["messages"]
+        if message["role"] == "tool"
+    ]
 
     assert len(tool_messages) == 1
     assert '"total_revenue": 100.0' in tool_messages[0]["content"]
@@ -339,11 +361,7 @@ def test_agent_handles_specific_api_errors(
 ) -> None:
     create = Mock(side_effect=error)
 
-    client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=create)
-        )
-    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
     monkeypatch.setattr(agent, "_build_client", lambda: client)
 
@@ -684,8 +702,6 @@ def test_agent_rejects_extremely_large_message(
         ),
     ],
 )
-
-
 def test_validate_tool_calls_rejects_invalid_structures(
     tool_call: SimpleNamespace,
 ) -> None:
@@ -804,19 +820,78 @@ def test_agent_stops_when_tool_result_exceeds_limit(
     assert "ultrapassou o limite permitido" in answer
     assert len(client.chat.completions.calls) == 1
 
+
 def test_validate_tool_calls_rejects_oversized_arguments() -> None:
     tool_call = SimpleNamespace(
         id="call-1",
         function=SimpleNamespace(
             name="get_total_revenue",
-            arguments='{"category": "' + (
-                "a" * MAX_TOOL_ARGUMENT_BYTES
-            ) + '"}',
+            arguments='{"category": "' + ("a" * MAX_TOOL_ARGUMENT_BYTES) + '"}',
         ),
     )
 
     result = validate_tool_calls([tool_call])
 
-    assert result == (
-        "Os argumentos da ferramenta ultrapassaram o limite permitido."
+    assert result == ("Os argumentos da ferramenta ultrapassaram o limite permitido.")
+
+
+def test_agent_logs_request_id_and_duration(
+    agent,
+    monkeypatch,
+    caplog,
+):
+    response = make_response(
+        SimpleNamespace(
+            content="O Data Pilot é um painel de análise.",
+            tool_calls=None,
+        )
     )
+
+    client = FakeClient([response])
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+
+    with caplog.at_level(logging.INFO):
+        answer = agent.ask("mensagem-confidencial")
+
+    request_ids = re.findall(r"request_id=([a-f0-9]{8})", caplog.text)
+
+    assert answer == "O Data Pilot é um painel de análise."
+    assert request_ids
+    assert len(set(request_ids)) == 1
+    assert "Consulta iniciada" in caplog.text
+    assert "duration_ms=" in caplog.text
+    assert "mensagem-confidencial" not in caplog.text
+    assert get_request_id() == "-"
+
+
+def test_agent_does_not_expose_exception_message_in_logs(
+    agent,
+    monkeypatch,
+    caplog,
+):
+    secret_message = "informacao-confidencial"
+
+    class FailingCompletions:
+        def create(self, **kwargs):
+            raise RuntimeError(secret_message)
+
+    failing_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=FailingCompletions(),
+        )
+    )
+
+    monkeypatch.setattr(
+        agent,
+        "_build_client",
+        lambda: failing_client,
+    )
+
+    with caplog.at_level(logging.INFO):
+        answer = agent.ask("mensagem de teste")
+
+    assert "Não foi possível concluir sua consulta" in answer
+    assert "error_type=RuntimeError" in caplog.text
+    assert secret_message not in caplog.text
+    assert "request_id=" in caplog.text
+    assert get_request_id() == "-"

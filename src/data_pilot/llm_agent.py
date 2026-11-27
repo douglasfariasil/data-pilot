@@ -1,13 +1,16 @@
 import json
 import logging
 import re
+import time
 import unicodedata
+import uuid
 
 import openai
 import pandas as pd
 from openai import OpenAI
 
 from data_pilot.config import Settings, settings
+from data_pilot.logging_config import request_id_context
 from data_pilot.tools import (
     MAX_TOOL_ARGUMENT_BYTES,
     build_tool_registry,
@@ -165,6 +168,7 @@ def validate_tool_calls(tool_calls: list) -> str | None:
 
     return None
 
+
 def serialize_tool_result(result: dict) -> str:
     """Serializa o resultado e verifica o limite de tamanho permitido."""
 
@@ -198,6 +202,42 @@ class DataPilotAgent:
         )
 
     def ask(self, user_message: str) -> str:
+        """Processa uma pergunta com identificação e medição de duração."""
+
+        request_id = uuid.uuid4().hex[:8]
+        token = request_id_context.set(request_id)
+        start_time = time.perf_counter()
+
+        logger.info("Consulta iniciada | request_id=%s", request_id)
+
+        try:
+            answer = self._ask(user_message)
+
+            duration_ms = (time.perf_counter() - start_time) * 1000
+
+            logger.info(
+                "Consulta finalizada | request_id=%s | duration_ms=%.2f",
+                request_id,
+                duration_ms,
+            )
+
+            return answer
+
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+
+            logger.error(
+                "Falha inesperada | request_id=%s | duration_ms=%.2f | error_type=%s",
+                request_id,
+                duration_ms,
+                type(exc).__name__,
+            )
+            raise
+
+        finally:
+            request_id_context.reset(token)
+
+    def _ask(self, user_message: str) -> str:
         """Processa perguntas, exigindo ferramentas para consultas quantitativas."""
 
         if not user_message or not user_message.strip():
@@ -338,50 +378,75 @@ class DataPilotAgent:
                 or "Os dados foram consultados, mas não foi possível gerar uma explicação."
             )
 
-        except openai.APITimeoutError:
-            logger.exception("Timeout ao aguardar resposta do serviço de IA.")
-            return (
-                "O serviço de IA demorou para responder. "
-                "Tente novamente em alguns instantes."
+        except openai.APITimeoutError as exc:
+            logger.error(
+                "Timeout no serviço de IA | request_id=%s | error_type=%s",
+                request_id_context.get(),
+                type(exc).__name__,
             )
+            return "O serviço de IA demorou para responder. Tente novamente em alguns instantes."
 
-        except openai.APIConnectionError:
-            logger.exception("Falha de conexão com o serviço de IA.")
+        except openai.APIConnectionError as exc:
+            logger.error(
+                "Falha de conexão com o serviço de IA | request_id=%s | error_type=%s",
+                request_id_context.get(),
+                type(exc).__name__,
+            )
             return (
                 "Não foi possível estabelecer conexão com o serviço de IA. "
                 "Verifique sua conexão e tente novamente."
             )
 
-        except openai.RateLimitError:
-            logger.exception("Limite de solicitações do serviço de IA atingido.")
+        except openai.RateLimitError as exc:
+            logger.error(
+                "Limite de solicitações do serviço de IA | request_id=%s | error_type=%s",
+                request_id_context.get(),
+                type(exc).__name__,
+            )
             return (
                 "O serviço de IA recebeu muitas solicitações. "
                 "Aguarde alguns instantes e tente novamente."
             )
 
-        except openai.AuthenticationError:
-            logger.exception("Falha de autenticação no serviço de IA.")
+        except openai.AuthenticationError as exc:
+            logger.error(
+                "Falha de autenticação no serviço de IA | request_id=%s | error_type=%s",
+                request_id_context.get(),
+                type(exc).__name__,
+            )
             return (
                 "Não foi possível autenticar o acesso ao serviço de IA. "
                 "Verifique a configuração do serviço."
             )
 
-        except openai.PermissionDeniedError:
-            logger.exception("Acesso negado pelo serviço de IA.")
+        except openai.PermissionDeniedError as exc:
+            logger.error(
+                "Acesso negado pelo serviço de IA | request_id=%s | error_type=%s",
+                request_id_context.get(),
+                type(exc).__name__,
+            )
             return (
                 "O acesso ao serviço de IA não está autorizado. "
                 "Verifique as permissões da configuração."
             )
 
-        except openai.APIError:
-            logger.exception("Erro retornado pela API do serviço de IA.")
+        except openai.APIError as exc:
+            logger.error(
+                "Erro na API do serviço de IA | request_id=%s | error_type=%s",
+                request_id_context.get(),
+                type(exc).__name__,
+            )
             return (
                 "O serviço de IA apresentou uma falha ao processar a solicitação. "
                 "Tente novamente mais tarde."
             )
 
-        except Exception:
-            logger.exception("Falha inesperada ao processar pergunta no Data Pilot.")
+        except Exception as exc:
+            logger.error(
+                "Falha inesperada no Data Pilot | request_id=%s | error_type=%s",
+                request_id_context.get(),
+                type(exc).__name__,
+            )
             return (
                 "Não foi possível concluir sua consulta no momento. "
                 "Verifique a disponibilidade do serviço e tente novamente."

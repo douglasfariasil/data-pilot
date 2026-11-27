@@ -5,6 +5,7 @@ import streamlit as st
 
 from data_pilot.config import settings
 from data_pilot.data_prep import load_clean_sales, prepare_sales_pipeline
+from data_pilot.logging_config import configure_logging
 from data_pilot.ui.chat_view import render_chat_view
 from data_pilot.ui.dashboard import render_dashboard
 
@@ -23,6 +24,8 @@ def _load_dataframe(raw_path: Path, clean_path: Path) -> pd.DataFrame:
 
 
 def main() -> None:
+    configure_logging()
+
     st.set_page_config(page_title=settings.app_title, layout="wide")
     st.title(settings.app_title)
 

@@ -1,7 +1,9 @@
 import json
+import logging
 
 import pandas as pd
 
+from data_pilot.logging_config import request_id_context
 from data_pilot.tools import (
     MAX_CATEGORY_LENGTH,
     MAX_TOOL_ARGUMENT_BYTES,
@@ -132,29 +134,21 @@ def test_execute_tool_does_not_expose_internal_exception() -> None:
 def test_execute_tool_rejects_arguments_above_size_limit() -> None:
     registry = {"probe": lambda category=None: {"category": category}}
 
-    arguments = '{"category": "' + (
-        "a" * MAX_TOOL_ARGUMENT_BYTES
-    ) + '"}'
+    arguments = '{"category": "' + ("a" * MAX_TOOL_ARGUMENT_BYTES) + '"}'
 
     output = execute_tool_call("probe", arguments, registry)
 
-    assert output == {
-        "error": "Os argumentos da ferramenta ultrapassaram o limite permitido."
-    }
+    assert output == {"error": "Os argumentos da ferramenta ultrapassaram o limite permitido."}
 
 
 def test_execute_tool_rejects_category_above_length_limit() -> None:
     registry = {"probe": lambda category=None: {"category": category}}
 
-    arguments = '{"category": "' + (
-        "a" * (MAX_CATEGORY_LENGTH + 1)
-    ) + '"}'
+    arguments = '{"category": "' + ("a" * (MAX_CATEGORY_LENGTH + 1)) + '"}'
 
     output = execute_tool_call("probe", arguments, registry)
 
-    assert output == {
-        "error": "O argumento category ultrapassou o limite permitido."
-    }
+    assert output == {"error": "O argumento category ultrapassou o limite permitido."}
 
 
 def test_execute_tool_accepts_category_at_length_limit() -> None:
@@ -173,6 +167,34 @@ def test_execute_tool_rejects_non_string_arguments() -> None:
 
     output = execute_tool_call("probe", 123, registry)
 
-    assert output == {
-        "error": "Os argumentos da ferramenta possuem um formato inválido."
-    }
+    assert output == {"error": "Os argumentos da ferramenta possuem um formato inválido."}
+
+
+def test_execute_tool_logs_request_id_and_duration(caplog):
+    registry = {"probe": lambda: {"result": "ok"}}
+    token = request_id_context.set("test1234")
+
+    try:
+        with caplog.at_level(logging.INFO):
+            output = execute_tool_call("probe", None, registry)
+    finally:
+        request_id_context.reset(token)
+
+    assert output == {"result": "ok"}
+    assert "request_id=test1234" in caplog.text
+    assert "tool=probe" in caplog.text
+    assert "duration_ms=" in caplog.text
+
+
+def test_execute_tool_does_not_log_exception_message(caplog):
+    def failing_tool():
+        raise RuntimeError("informacao-confidencial")
+
+    registry = {"probe": failing_tool}
+
+    with caplog.at_level(logging.ERROR):
+        output = execute_tool_call("probe", None, registry)
+
+    assert "error_type=RuntimeError" in caplog.text
+    assert "informacao-confidencial" not in caplog.text
+    assert output == {"error": "Não foi possível executar a ferramenta solicitada."}
