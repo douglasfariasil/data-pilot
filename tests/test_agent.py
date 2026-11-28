@@ -932,3 +932,106 @@ def test_agent_does_not_expose_exception_message_in_logs(
     assert secret_message not in caplog.text
     assert "request_id=" in caplog.text
     assert get_request_id() == "-"
+
+
+def test_agent_handles_empty_final_response(
+    agent: DataPilotAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(
+            name="get_total_revenue",
+            arguments="{}",
+        ),
+    )
+
+    first_response = make_response(
+        SimpleNamespace(content=None, tool_calls=[tool_call])
+    )
+    second_response = make_response(
+        SimpleNamespace(content="   ", tool_calls=None)
+    )
+
+    client = FakeClient([first_response, second_response])
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+
+    answer = agent.ask("Qual foi o faturamento?")
+
+    assert answer == (
+        "Não consegui identificar uma resposta válida do serviço de IA."
+    )
+
+
+def test_agent_rejects_non_string_final_response(
+    agent: DataPilotAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(
+            name="get_total_revenue",
+            arguments="{}",
+        ),
+    )
+
+    first_response = make_response(
+        SimpleNamespace(content=None, tool_calls=[tool_call])
+    )
+    second_response = make_response(
+        SimpleNamespace(
+            content=["Resposta inesperada"],
+            tool_calls=None,
+        )
+    )
+
+    client = FakeClient([first_response, second_response])
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+
+    answer = agent.ask("Qual foi o faturamento?")
+
+    assert answer == (
+        "Não consegui identificar uma resposta válida do serviço de IA."
+    )
+
+
+def test_agent_rejects_additional_tool_calls_in_final_response(
+    agent: DataPilotAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_tool_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(
+            name="get_total_revenue",
+            arguments="{}",
+        ),
+    )
+
+    additional_tool_call = SimpleNamespace(
+        id="call-extra",
+        function=SimpleNamespace(
+            name="get_total_revenue",
+            arguments="{}",
+        ),
+    )
+
+    first_response = make_response(
+        SimpleNamespace(content=None, tool_calls=[first_tool_call])
+    )
+    second_response = make_response(
+        SimpleNamespace(
+            content=None,
+            tool_calls=[additional_tool_call],
+        )
+    )
+
+    client = FakeClient([first_response, second_response])
+    monkeypatch.setattr(agent, "_build_client", lambda: client)
+
+    answer = agent.ask("Qual foi o faturamento?")
+
+    assert answer == (
+        "Não consegui identificar uma resposta válida do serviço de IA."
+    )
+
+    assert len(client.chat.completions.calls) == 2

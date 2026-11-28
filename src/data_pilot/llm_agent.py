@@ -379,10 +379,22 @@ class DataPilotAgent:
 
             second_assistant_msg = extract_response_message(second_response)
 
-            return (
-                second_assistant_msg.content
-                or "Os dados foram consultados, mas não foi possível gerar uma explicação."
-            )
+            final_content = getattr(second_assistant_msg, "content", None)
+            final_tool_calls = getattr(second_assistant_msg, "tool_calls", None)
+
+            if final_tool_calls:
+                logger.warning(
+                    "O modelo solicitou ferramentas adicionais após a execução permitida."
+                )
+                return "Não consegui identificar uma resposta válida do serviço de IA."
+
+            if not isinstance(final_content, str) or not final_content.strip():
+                logger.warning(
+                    "O serviço de IA retornou uma resposta final vazia ou inválida."
+                )
+                return "Não consegui identificar uma resposta válida do serviço de IA."
+
+            return final_content.strip()
 
         except openai.APITimeoutError as exc:
             logger.error(
